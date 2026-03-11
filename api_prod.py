@@ -1,24 +1,28 @@
 import json
 import time
 import requests
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+
 from config.runtime_config import get_runtime_config, update_runtime_config
+
 from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential, AzureCliCredential
 from azure.ai.agents.models import ListSortOrder, RunStatus
 
-PROJECT_ENDPOINT = "https://marketplace-aifoundry.services.ai.azure.com/api/projects/proj-default"
 
-RECOVERY_AGENT_ID = "asst_0ywRqan9UlWxRSM3bcgpJmDh"
-MESSAGE_AGENT_ID  = "asst_BiR67fIqqynuIHTI3VBTM7rr"
+PROJECT_ENDPOINT = "https://marketplace-aifoundry.services.ai.azure.com/api/projects/proj-default"
 
 MCP_URL = "http://localhost:8004/mcp"
 
 app = FastAPI(title="Flight Disruption API")
 
 
+# =================================================
+# REQUEST MODELS
+# =================================================
 
 class DisruptionRequest(BaseModel):
     pnr: str
@@ -26,8 +30,20 @@ class DisruptionRequest(BaseModel):
     tenant_id: str
 
 
+class AdminConfig(BaseModel):
+    tenant_id: str
+    recovery_agent_id: str | None = None
+    message_agent_id: str | None = None
+    system_prompt: str | None = None
+    text: str | None = None
+
+
+# =================================================
+# SAFE JSON EXTRACTION FROM AGENT
+# =================================================
 
 def safe_json_from_agent(text: str) -> dict:
+
     if not text or not text.strip():
         raise ValueError("Agent returned empty response")
 
@@ -49,7 +65,12 @@ def safe_json_from_agent(text: str) -> dict:
     return json.loads(text[start:end + 1])
 
 
+# =================================================
+# MCP TOOL EXECUTION
+# =================================================
+
 def execute_mcp_tool(tool_name: str, arguments: dict):
+
     payload = {
         "jsonrpc": "2.0",
         "id": "ui-call",
@@ -76,10 +97,12 @@ def execute_mcp_tool(tool_name: str, arguments: dict):
         raise RuntimeError("MCP call failed")
 
     for line in response.text.splitlines():
+
         if not line.startswith("data:"):
             continue
 
         raw = line.replace("data:", "", 1).strip()
+
         try:
             payload = json.loads(raw)
         except Exception:
@@ -87,40 +110,61 @@ def execute_mcp_tool(tool_name: str, arguments: dict):
 
         result = payload.get("result", {})
 
-        # structuredContent
         structured = result.get("structuredContent")
+
         if structured:
             for item in structured.get("content", []):
                 if item.get("type") == "json":
                     return item["json"]
 
-        # embedded JSON
         for item in result.get("content", []):
+
             if item.get("type") == "text":
+
                 try:
                     embedded = json.loads(item["text"])
+
                     for c in embedded.get("content", []):
+
                         if c.get("type") == "json":
                             return c["json"]
+
                 except Exception:
                     pass
 
     raise RuntimeError("No valid MCP JSON found")
 
+
+# =================================================
+# CORS
+# =================================================
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# =================================================
+# AZURE AUTH
+# =================================================
+
 try:
     credential = DefaultAzureCredential()
-    # force authentication test
     credential.get_token("https://management.azure.com/.default")
 except Exception:
     credential = AzureCliCredential()
+
+
+# =================================================
+# AGENT EXECUTION
+# =================================================
+
 def run_agent(flow: str, tenant_id: str, mcp_data: dict):
+
     runtime = get_runtime_config(tenant_id)
 
     agent_id = (
@@ -135,10 +179,18 @@ def run_agent(flow: str, tenant_id: str, mcp_data: dict):
     )
 
     with client:
+
         thread = client.agents.threads.create()
+
+        # =================================================
+        # PROMPT PLACEHOLDER
+        # =================================================
 
         if flow == "recovery":
             recovery = mcp_data["recovery"]
+            # -------------------------------------------------
+            # TODO: Add recovery prompt here
+            # -------------------------------------------------
             prompt = f"""
 You are a STRICT Flight & Seat Recovery Decision Engine.
 Passenger Profile:
@@ -305,7 +357,12 @@ FAIL IF:
 
 """
 
-        else:  # messaging
+
+        else:
+
+            # -------------------------------------------------
+            # TODO: Add messaging prompt here
+            # -------------------------------------------------
             prompt = f"""
 CRITICAL RULES (MUST FOLLOW):
 - You MUST NOT call any tools
@@ -373,10 +430,20 @@ OUTPUT FORMAT (JSON ONLY):
 MCP CONTEXT:
 {json.dumps(mcp_data, indent=2)}
 """
-        admin_prompt = runtime.get("prompt_append", "")
+    
 
-        if admin_prompt:
-            prompt = f"{prompt}\n\nADMIN INSTRUCTIONS:\n{admin_prompt}"
+        # -------------------------------------------------
+        # ADMIN PROMPT APPEND
+        # -------------------------------------------------
+
+        admin_system = runtime.get("system_prompt", "")
+        admin_user = runtime.get("text", "")
+        print("RUNTIME CONFIG:", runtime)
+        if admin_system:
+            prompt = f"{admin_system}\n\n{prompt}"
+
+        if admin_user:
+            prompt = f"{prompt}\n\nADMIN INSTRUCTIONS:\n{admin_user}"
         client.agents.messages.create(
             thread_id=thread.id,
             role="user",
@@ -391,12 +458,17 @@ MCP CONTEXT:
         )
 
         start = time.time()
+
         while True:
+
             run = client.agents.runs.get(thread.id, run.id)
+
             if run.status == RunStatus.COMPLETED:
                 break
+
             if time.time() - start > 120:
                 raise TimeoutError("Agent timeout")
+
             time.sleep(1)
 
         messages = client.agents.messages.list(
@@ -405,22 +477,25 @@ MCP CONTEXT:
         )
 
         for msg in reversed(list(messages)):
+
             if msg.role == "assistant":
-                # return json.loads(msg.text_messages[0].text.value)
+
                 if not msg.text_messages:
                     raise RuntimeError("Agent returned no text messages")
 
                 raw = msg.text_messages[0].text.value
-                return safe_json_from_agent(raw)
 
+                return safe_json_from_agent(raw)
 
     raise RuntimeError("Agent failed")
 
 
 # =================================================
-# API ENDPOINT (UI → HERE)
+# EVENT FORMATTER
 # =================================================
-def build_event_payload(mcp_data: dict) -> dict:
+
+def build_event_payload(mcp_data: dict):
+
     flight = mcp_data.get("event", {}).get("original_flight", {})
 
     return {
@@ -435,9 +510,15 @@ def build_event_payload(mcp_data: dict) -> dict:
     }
 
 
+# =================================================
+# MAIN API
+# =================================================
+
 @app.post("/disruption")
 def handle_disruption_api(req: DisruptionRequest):
+
     try:
+
         mcp_data = execute_mcp_tool(
             "handle_disruption",
             {
@@ -451,7 +532,12 @@ def handle_disruption_api(req: DisruptionRequest):
             return mcp_data
 
         flow = mcp_data.get("flow")
-        agent_output = run_agent(flow, mcp_data)
+
+        agent_output = run_agent(
+            flow,
+            req.tenant_id,
+            mcp_data
+        )
 
         event_payload = build_event_payload(mcp_data)
 
@@ -464,3 +550,28 @@ def handle_disruption_api(req: DisruptionRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =================================================
+# ADMIN PANEL APIs
+# =================================================
+
+@app.post("/admin/update-config")
+def update_config(cfg: AdminConfig):
+
+    update_runtime_config(
+        cfg.tenant_id,
+        {
+            k: v
+            for k, v in cfg.model_dump().items()
+            if k != "tenant_id" and v is not None
+        }
+    )
+
+    return {"status": "updated"}
+
+
+@app.get("/admin/config/{tenant_id}")
+def get_config(tenant_id: str):
+
+    return get_runtime_config(tenant_id)

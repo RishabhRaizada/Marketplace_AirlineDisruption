@@ -255,8 +255,20 @@ def fetch_active_agents() -> list[dict]:
         try:
             return list(
                 db["agents"].find(
-                    {"is_active": True},
-                    {"_id": 0, "agent_id": 1, "name": 1, "description": 1},
+                    {
+                        "$or": [
+                            {"is_active_recovery": True},
+                            {"is_active_messaging": True}
+                        ]
+                    },
+                    {
+                        "_id": 0,
+                        "agent_id": 1,
+                        "name": 1,
+                        "description": 1,
+                        "is_active_recovery": 1,
+                        "is_active_messaging": 1
+                    },
                 )
             )
         finally:
@@ -279,3 +291,29 @@ def fetch_active_template() -> dict | None:
     except Exception as e:
         print(f"[cosmos_data_fetcher] fetch_active_template failed: {e}")
         return None
+    
+def fetch_recovery_prompt():
+
+    doc = _find_one(
+        "prompts",
+        {"type": "recovery", "is_active": True},
+        {"_id": 0}
+    )
+
+    if not doc:
+        return ""
+
+    return doc.get("system_prompt", "")
+
+def fetch_messaging_prompt():
+
+    doc = _find_one(
+        "prompts",
+        {"type": "messaging", "is_active": True},
+        {"_id": 0}
+    )
+
+    if not doc:
+        return ""
+
+    return doc.get("user_prompt", "")

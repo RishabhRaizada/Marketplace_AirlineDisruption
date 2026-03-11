@@ -1,5 +1,5 @@
 import logging
-import asyncio
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from fastmcp import FastMCP
 
@@ -17,6 +17,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("disruption-mcp")
 
 mcp = FastMCP("disruption_mcp")
+
+executor = ThreadPoolExecutor(max_workers=20)
 
 
 def normalize_event(raw: dict) -> dict:
@@ -53,7 +55,7 @@ def normalize_event(raw: dict) -> dict:
 
 
 @mcp.tool()
-async def handle_disruption(tenant_id: str, pnr: str, last_name: str):
+def handle_disruption(tenant_id: str, pnr: str, last_name: str):
 
     logger.info(
         "TENANT=%s PNR=%s LAST_NAME=%s",
@@ -77,7 +79,7 @@ async def handle_disruption(tenant_id: str, pnr: str, last_name: str):
     # -------------------------------------------------
     # DISRUPTION API
     # -------------------------------------------------
-    raw = await fetch_event_by_pnr(tenant_id, pnr)
+    raw = fetch_event_by_pnr(tenant_id, pnr)
 
     if not raw:
         return {
@@ -147,17 +149,21 @@ async def handle_disruption(tenant_id: str, pnr: str, last_name: str):
             # -------------------------------------------------
             # PARALLEL: CDP + FLIGHT SEARCH
             # -------------------------------------------------
-            profile, flights = await asyncio.gather(
-                find_users(
-                    tenant_id,
-                    last_name,
-                    event["passenger"]["email"] or event["passenger"]["mobile"]
-                ),
-                search_flights(
-                    tenant_id,
-                    seg_key
-                )
+            future_profile = executor.submit(
+                find_users,
+                tenant_id,
+                last_name,
+                event["passenger"]["email"] or event["passenger"]["mobile"]
             )
+
+            future_flights = executor.submit(
+                search_flights,
+                tenant_id,
+                seg_key
+            )
+
+            profile = future_profile.result()
+            flights = future_flights.result()
 
             logger.info(
                 "FLIGHT_SEARCH_RESULT_COUNT=%d",
@@ -185,42 +191,39 @@ async def handle_disruption(tenant_id: str, pnr: str, last_name: str):
             # -------------------------------------------------
             # PARALLEL SEATMAP FETCH
             # -------------------------------------------------
-            seat_tasks = [
-                get_seat_map(
+            seat_futures = {
+                executor.submit(
+                    get_seat_map,
                     tenant_id,
                     f.get("segKey")
-                )
+                ): f.get("segKey")
                 for f in flights
-            ]
-
-            seat_results = await asyncio.gather(
-                *seat_tasks,
-                return_exceptions=True
-            )
+            }
 
             all_seats = []
 
-            for i, result in enumerate(seat_results):
+            for future in as_completed(seat_futures):
 
-                flight_segkey = flights[i].get("segKey")
+                flight_segkey = seat_futures[future]
 
-                if isinstance(result, Exception):
+                try:
+                    seats = future.result()
+
+                    logger.info(
+                        "SEATS_FOUND_FOR_FLIGHT=%s COUNT=%d",
+                        flight_segkey,
+                        len(seats)
+                    )
+
+                    all_seats.extend(seats)
+
+                except Exception as e:
 
                     logger.error(
                         "SEATMAP_FETCH_FAILED=%s ERROR=%s",
                         flight_segkey,
-                        str(result)
+                        str(e)
                     )
-
-                    continue
-
-                logger.info(
-                    "SEATS_FOUND_FOR_FLIGHT=%s COUNT=%d",
-                    flight_segkey,
-                    len(result)
-                )
-
-                all_seats.extend(result)
 
             logger.info(
                 "TOTAL_SEATS_FOUND=%d",
@@ -229,7 +232,10 @@ async def handle_disruption(tenant_id: str, pnr: str, last_name: str):
 
         except Exception as e:
 
-            logger.exception("AIRLINE_API_ERROR")
+            logger.error(
+                "AIRLINE_API_ERROR=%s",
+                str(e)
+            )
 
             return {
                 "content": [{
@@ -265,7 +271,7 @@ async def handle_disruption(tenant_id: str, pnr: str, last_name: str):
     # =====================================================
     if event["event_type"] == "flight_delayed":
 
-        profile = await find_users(
+        profile = find_users(
             tenant_id,
             last_name,
             event["passenger"]["email"] or event["passenger"]["mobile"]

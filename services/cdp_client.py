@@ -1,11 +1,10 @@
-import requests
 from config.settings import (
     CDP_API_BASE_URL,
-    CDP_API_KEY,
-    TIMEOUT
+    CDP_API_KEY
 )
 
 from tenant.tenant_config import get_tenant_config
+from services.http_client import client
 
 
 def _headers():
@@ -15,7 +14,7 @@ def _headers():
     }
 
 
-def find_users(tenant_id: str, last_name: str, email_or_phone: str):
+async def find_users(tenant_id: str, last_name: str, email_or_phone: str):
 
     payload = {
         "last_name": last_name,
@@ -25,14 +24,13 @@ def find_users(tenant_id: str, last_name: str, email_or_phone: str):
     # Resolve tenant configuration
     tenant_config = get_tenant_config(tenant_id)
 
-    # Use tenant-specific API if present, otherwise fallback to settings
+    # Use tenant-specific API if present, otherwise fallback
     base_url = tenant_config.get("cdp_api", CDP_API_BASE_URL)
 
-    response = requests.post(
+    response = await client.post(
         f"{base_url}/cdp/user-lookup",
         headers=_headers(),
-        json=payload,
-        timeout=TIMEOUT
+        json=payload
     )
 
     response.raise_for_status()
@@ -42,4 +40,4 @@ def find_users(tenant_id: str, last_name: str, email_or_phone: str):
     if "error" in data:
         raise Exception(data["error"]["message"])
 
-    return data["users"]
+    return data.get("users", [])
