@@ -1,3 +1,4 @@
+import asyncio
 import json
 from services.cdp_client import find_users
 
@@ -22,10 +23,10 @@ def normalize_student(v):
     return False
 
 
-def check_user_autorecovery_eligibility(last_name, email_or_phone):
+async def check_user_autorecovery_eligibility(tenant_id: str, last_name: str, email_or_phone: str):
 
     try:
-        users = find_users(last_name, email_or_phone)
+        users = await find_users(tenant_id, last_name, email_or_phone)
     except Exception as e:
         return {"status": "error", "reason": str(e)}
 
@@ -68,22 +69,23 @@ def check_user_autorecovery_eligibility(last_name, email_or_phone):
 
 
 # MCP wrapper
-def validate_request(last_name: str, email_or_phone: str):
-    return check_user_autorecovery_eligibility(last_name, email_or_phone)
+async def validate_request(tenant_id: str, last_name: str, email_or_phone: str):
+    return await check_user_autorecovery_eligibility(tenant_id, last_name, email_or_phone)
 
 
 def main():
     print("\n=== Autorecovery Eligibility Checker ===\n")
 
+    tenant_id = input("Enter Tenant ID: ").strip()
     last_name = input("Enter Last Name: ").strip()
     email_or_phone = input("Enter Email or Phone: ").strip()
 
-    if not last_name or not email_or_phone:
-        print("Both fields are required")
+    if not tenant_id or not last_name or not email_or_phone:
+        print("All fields are required")
         return
 
     try:
-        result = validate_request(last_name, email_or_phone)
+        result = asyncio.run(validate_request(tenant_id, last_name, email_or_phone))
         print("\nResult:\n")
         print(json.dumps(result, indent=2))
     except Exception as e:

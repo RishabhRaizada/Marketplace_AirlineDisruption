@@ -111,7 +111,8 @@ async def handle_disruption(tenant_id: str, pnr: str, last_name: str):
     # =====================================================
     if event["event_type"] == "flight_cancelled":
 
-        eligibility = validate_request(
+        eligibility = await validate_request(
+            tenant_id,
             last_name,
             event["passenger"]["email"] or event["passenger"]["mobile"]
         )

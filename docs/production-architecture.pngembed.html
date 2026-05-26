@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>prodDisruption — Production Architecture on Microsoft Azure</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --azure-blue: #0078d4;
+    --azure-blue-dark: #005a9e;
+    --azure-blue-darker: #003d6b;
+    --ink: #1b1f24;
+    --ink-soft: #4a5460;
+    --border: #e3e8ef;
+    --bg: #ffffff;
+    --bg-soft: #f7f9fc;
+    --bg-accent: #eef5fc;
+    --code-bg: #f3f6fa;
+    --good: #107c10;
+    --warn: #b45309;
+    --bad: #c50f1f;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(15,30,50,.06);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg-soft);
+    color: var(--ink);
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  header.hero {
+    background: linear-gradient(135deg, var(--azure-blue-darker) 0%, var(--azure-blue) 70%, #50a5e8 100%);
+    color: #fff;
+    padding: 56px 48px 48px 48px;
+    border-bottom: 1px solid var(--border);
+  }
+  header.hero .eyebrow {
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: 2px;
+    opacity: .85;
+    margin-bottom: 8px;
+  }
+  header.hero h1 {
+    font-size: 36px;
+    margin: 0 0 8px 0;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+  }
+  header.hero .subtitle {
+    font-size: 18px;
+    opacity: .92;
+    max-width: 920px;
+    margin: 0;
+  }
+  header.hero .meta {
+    margin-top: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px 36px;
+    font-size: 13px;
+    opacity: .9;
+  }
+  header.hero .meta span strong {
+    display: block;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    font-size: 11px;
+    opacity: .8;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+
+  main {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 40px 48px 80px 48px;
+  }
+
+  nav.toc {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 36px;
+    box-shadow: var(--shadow);
+  }
+  nav.toc h2 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--ink-soft);
+    margin: 0 0 12px 0;
+  }
+  nav.toc ol {
+    margin: 0;
+    padding-left: 20px;
+    columns: 2;
+    column-gap: 36px;
+  }
+  nav.toc li {
+    margin-bottom: 6px;
+    break-inside: avoid;
+  }
+  nav.toc a {
+    color: var(--azure-blue-dark);
+    text-decoration: none;
+  }
+  nav.toc a:hover { text-decoration: underline; }
+
+  section {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 32px 36px;
+    margin-bottom: 28px;
+    box-shadow: var(--shadow);
+  }
+
+  section h2 {
+    font-size: 22px;
+    margin: 0 0 18px 0;
+    color: var(--ink);
+    border-bottom: 2px solid var(--azure-blue);
+    padding-bottom: 10px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+  }
+  section h2 .num {
+    color: var(--azure-blue);
+    font-weight: 700;
+    margin-right: 10px;
+  }
+  section h3 {
+    font-size: 17px;
+    margin: 28px 0 12px 0;
+    color: var(--azure-blue-darker);
+    font-weight: 600;
+  }
+  section p, section li { color: var(--ink); }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0 20px 0;
+    font-size: 14px;
+    background: #fff;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  th {
+    background: var(--bg-accent);
+    color: var(--azure-blue-darker);
+    font-weight: 600;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  tr:last-child td { border-bottom: none; }
+  td code, p code, li code {
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+    font-size: 13px;
+    color: var(--azure-blue-darker);
+  }
+
+  .mermaid {
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    margin: 18px 0 22px 0;
+    text-align: center;
+    overflow-x: auto;
+  }
+
+  .pillars {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+    margin: 16px 0 22px 0;
+  }
+  .pillar {
+    background: var(--bg-accent);
+    border-left: 4px solid var(--azure-blue);
+    padding: 14px 16px;
+    border-radius: 6px;
+  }
+  .pillar strong {
+    display: block;
+    color: var(--azure-blue-darker);
+    margin-bottom: 4px;
+    font-size: 14px;
+  }
+  .pillar span { font-size: 13px; color: var(--ink-soft); }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 12px;
+    background: var(--bg-accent);
+    color: var(--azure-blue-darker);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .badge.good { background: #e6f4ea; color: var(--good); }
+  .badge.warn { background: #fdf3e7; color: var(--warn); }
+  .badge.bad  { background: #fde7e9; color: var(--bad); }
+
+  footer {
+    text-align: center;
+    color: var(--ink-soft);
+    font-size: 13px;
+    padding: 24px 48px 40px 48px;
+    border-top: 1px solid var(--border);
+    background: #fff;
+  }
+  footer strong { color: var(--ink); }
+
+  @media print {
+    body { background: #fff; font-size: 12px; }
+    header.hero { padding: 32px; }
+    section { box-shadow: none; page-break-inside: avoid; }
+    nav.toc { display: none; }
+    .mermaid { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="eyebrow">Microsoft Azure · Production Architecture</div>
+  <h1>prodDisruption — Flight Disruption Intelligence Platform</h1>
+  <p class="subtitle">A multi-tenant, AI-driven SaaS platform on Azure that automates passenger recovery and personalised notifications during flight disruptions, built on Azure Container Apps, Azure AI Foundry, Azure API Management and Azure Cosmos DB.</p>
+  <div class="meta">
+    <span><strong>Owner</strong>AIONOS Platform Engineering</span>
+    <span><strong>Cloud</strong>Microsoft Azure</span>
+    <span><strong>Compute</strong>Azure Container Apps (×3) + Static Web Apps</span>
+    <span><strong>AI Runtime</strong>Azure AI Foundry</span>
+    <span><strong>Edge</strong>Azure API Management</span>
+    <span><strong>Document Version</strong>1.0</span>
+  </div>
+</header>
+
+<main>
+
+<nav class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#sec-summary">Executive Summary</a></li>
+    <li><a href="#sec-context">Business Context</a></li>
+    <li><a href="#sec-logical">Logical Architecture</a></li>
+    <li><a href="#sec-components">Component Responsibilities</a></li>
+    <li><a href="#sec-flows">Runtime Flows</a></li>
+    <li><a href="#sec-services">Azure Service Inventory</a></li>
+    <li><a href="#sec-network">Network Architecture</a></li>
+    <li><a href="#sec-identity">Identity &amp; Access</a></li>
+    <li><a href="#sec-data">Data Architecture</a></li>
+    <li><a href="#sec-ai">AI Architecture</a></li>
+    <li><a href="#sec-tenancy">Multi-Tenancy Model</a></li>
+    <li><a href="#sec-observability">Observability</a></li>
+    <li><a href="#sec-devops">DevOps &amp; Release Engineering</a></li>
+    <li><a href="#sec-reliability">Reliability &amp; Disaster Recovery</a></li>
+    <li><a href="#sec-performance">Performance &amp; Scaling</a></li>
+    <li><a href="#sec-security">Security Controls</a></li>
+    <li><a href="#sec-waf">Well-Architected Framework Alignment</a></li>
+  </ol>
+</nav>
+
+<section id="sec-summary">
+  <h2><span class="num">1.</span>Executive Summary</h2>
+
+  <h3>1.1 What is prodDisruption</h3>
+  <p><strong>prodDisruption</strong> is a multi-tenant, AI-driven SaaS platform that automates how an airline handles passenger experience the moment a flight is <strong>cancelled</strong> or <strong>delayed</strong>. It sits in front of the airline's existing CRM, Customer Data Platform (CDP) and flight inventory systems, and turns every disruption event into one of two outcomes:</p>
+  <ul>
+    <li><strong>Recovery</strong> — when a flight is cancelled, an Azure AI Foundry agent selects the best alternate flight and the best available seat for that passenger, in under 30 seconds, using rules derived from the passenger's CDP persona (Student, Doctor, Defence, High&nbsp;Spender, General).</li>
+    <li><strong>Messaging</strong> — when a flight is delayed, an Azure AI Foundry agent selects the right message group and produces three personalised, channel-aware notifications (SMS, WhatsApp, Email) from the airline's approved template set, again driven by the passenger's persona.</li>
+  </ul>
+
+  <h3>1.2 Why this is needed</h3>
+  <p>Flight disruptions are one of the largest unmanaged cost and CX problems in commercial aviation:</p>
+  <ul>
+    <li>Globally, irregular operations (IROPS) cost the aviation industry an estimated <strong>USD 30+ billion every year</strong> in operational recovery, compensation and lost loyalty (industry estimates).</li>
+    <li>A single cancellation on a narrow-body aircraft produces roughly <strong>180 individual rebooking conversations</strong> that today queue on contact-centre agents, with handle times in tens of minutes per passenger.</li>
+    <li>Generic disruption SMS treats every passenger identically — a Defence traveller, a Doctor, a Student and a top-tier loyalist all receive the same template. Personalisation at scale is operationally impossible by hand.</li>
+    <li>Airlines competing on customer experience need to <strong>scale empathy</strong>: every disrupted passenger needs an immediate, individually-relevant response — not a position in a phone queue.</li>
+  </ul>
+
+  <h3>1.3 Business outcomes</h3>
+  <div class="pillars">
+    <div class="pillar"><strong>Lower IROPS cost</strong><span>↓ Contact-centre handle time and operational cost during disruption events</span></div>
+    <div class="pillar"><strong>Higher NPS</strong><span>Sub-minute, personalised responses replace 20-minute call queues</span></div>
+    <div class="pillar"><strong>Loyalty retention</strong><span>Persona-aware recovery protects high-value segments (High Spenders, Defence, Doctors)</span></div>
+    <div class="pillar"><strong>Auditable playbook</strong><span>Standardised, logged disruption handling — every decision is traceable</span></div>
+  </div>
+
+  <h3>1.4 How the platform works</h3>
+  <p>Each disruption request follows the same four-step flow: (1) the platform ingests the disruption event from the airline's operational systems, (2) resolves the passenger's persona via the airline's CDP, (3) invokes the tenant-scoped <strong>Azure AI Foundry</strong> agent for either Recovery or Messaging, and (4) returns a deterministic, structured JSON response that the airline's downstream channels (web, mobile, contact centre, OTAs) consume directly.</p>
+
+  <h3>1.5 Engineering posture</h3>
+  <p>The platform is deployed entirely on managed Microsoft Azure services: <strong>three Azure Container Apps</strong> (<code>api-prod</code>, <code>api-admin</code>, <code>mcp-server</code>) behind <strong>Azure API Management</strong>, with an <strong>Azure Static Web Apps</strong> front-end for tenant administration. <strong>Azure Cache for Redis</strong> provides idempotency and hot-path caching; <strong>Azure Cosmos DB for MongoDB</strong> stores tenant configuration, AI agent registry, prompts and templates; <strong>Azure Key Vault</strong> holds all secrets with <strong>Managed Identity</strong> end-to-end; <strong>Microsoft Entra ID</strong> issues identities for admins and inter-tenant federation. Tenant configuration and the AI agent registry are hot-swappable — agent IDs, prompts and templates change at runtime without an application restart.</p>
+
+  <div class="pillars">
+    <div class="pillar"><strong>Multi-tenant</strong><span>Logical multi-tenant, partitioned by <code>tenant_id</code> at every layer</span></div>
+    <div class="pillar"><strong>Deterministic AI</strong><span>temperature = 0.1, top_p = 0.1, structured JSON output with hallucination guard</span></div>
+    <div class="pillar"><strong>Zero-trust</strong><span>Managed Identity, Key Vault references, private endpoints, no shared secrets</span></div>
+    <div class="pillar"><strong>SaaS economics</strong><span>Per-tenant metering, per-app autoscaling, per-tenant cost attribution</span></div>
+  </div>
+</section>
+
+<section id="sec-context">
+  <h2><span class="num">2.</span>Business Context</h2>
+  <table>
+    <thead><tr><th>Stakeholder</th><th>Outcome</th></tr></thead>
+    <tbody>
+      <tr><td>Airline passengers</td><td>Sub-minute personalised recovery (alternate flight + seat) or proactive delay notifications</td></tr>
+      <tr><td>Airline operations</td><td>Automation of disruption recovery; reduction in contact-centre load</td></tr>
+      <tr><td>Airline marketing / CRM</td><td>Persona-aware messaging across Student, Doctor, Defence, High Spender, General segments</td></tr>
+      <tr><td>Airline IT</td><td>Drop-in SaaS — no on-premise AI infrastructure; standards-based REST API</td></tr>
+      <tr><td>AIONOS</td><td>Multi-tenant SaaS economics on Azure with per-tenant isolation and metering</td></tr>
+    </tbody>
+  </table>
+  <h3>Supported disruption flows</h3>
+  <ul>
+    <li><strong>Recovery flow</strong> — <code>event_type = flight_cancelled</code>. AI selects the best alternate flight + best seat based on CDP-derived priority rules.</li>
+    <li><strong>Messaging flow</strong> — <code>event_type = flight_delayed</code>. AI selects the best message group and personalises SMS / WhatsApp / Email content.</li>
+  </ul>
+</section>
+
+<section id="sec-logical">
+  <h2><span class="num">3.</span>Logical Architecture</h2>
+  <p>The platform is composed of three Azure Container Apps fronted by Azure API Management. The Admin Panel is delivered as a Static Web App. All data and identity services are accessed over private endpoints from inside the Container Apps VNET.</p>
+  <div class="mermaid" data-processed="true"><p><img src="_diagrams/diagram-01.png" alt="diagram-01" style="max-width:100%;height:auto;"/></p></div>
+</section>
+
+<section id="sec-components">
+  <h2><span class="num">4.</span>Component Responsibilities</h2>
+  <table>
+    <thead><tr><th>Component</th><th>Azure Service</th><th>Responsibility</th><th>Ingress</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Admin SPA</td><td>Azure Static Web Apps</td>
+        <td>Airline admin UI for tenant config, agent registry, prompt and template management</td>
+        <td>Public (HTTPS, custom domain)</td>
+      </tr>
+      <tr>
+        <td>APIM</td><td>API Management Standard v2</td>
+        <td>Single ingress, JWT auth, tenant context injection (<code>X-Tenant-Id</code>), rate limiting, subscription keys, schema validation, request logging</td>
+        <td>Public (HTTPS)</td>
+      </tr>
+      <tr>
+        <td><code>api-prod</code></td><td>Azure Container Apps</td>
+        <td>Public REST API. Receives disruption requests, orchestrates the MCP call, executes the Azure AI Foundry agent and returns the structured response</td>
+        <td>External — via APIM only</td>
+      </tr>
+      <tr>
+        <td><code>api-admin</code></td><td>Azure Container Apps</td>
+        <td>Backend for the Admin SPA. CRUD on tenants, agents, prompts, templates. Writes audit logs to Cosmos DB</td>
+        <td>External — via APIM only</td>
+      </tr>
+      <tr>
+        <td><code>mcp-server</code></td><td>Azure Container Apps</td>
+        <td>Data orchestration plane. Parallel async fan-out to Disruption API, CDP API and Airline API. Resolves tenant base URLs from Cosmos DB</td>
+        <td>Internal — VNET only</td>
+      </tr>
+      <tr>
+        <td>AI Foundry</td><td>Azure AI Foundry (GPT-4.1)</td>
+        <td>Hosts the Recovery Agent and Messaging Agent. Per-tenant agent IDs resolved at runtime from Cosmos DB</td>
+        <td>Managed Identity authenticated</td>
+      </tr>
+      <tr>
+        <td>Redis Cache</td><td>Azure Cache for Redis</td>
+        <td>Hot-path caching: idempotency keys (de-dup repeated PNR requests), response cache for completed jobs, seat-map cache (30 min TTL), tenant-config and agent-config short-TTL cache, rate-limit counters</td>
+        <td>Private endpoint (Premium tier) / firewall + MI auth (Standard tier)</td>
+      </tr>
+      <tr>
+        <td>Cosmos DB</td><td>Cosmos DB for MongoDB</td>
+        <td>System of record for tenant config, agents, prompts, templates, settings, audit logs</td>
+        <td>Private endpoint</td>
+      </tr>
+      <tr>
+        <td>Entra ID</td><td>Microsoft Entra ID (P1)</td>
+        <td>Identity provider for airline admin users (SSO into the Admin SPA), JWT issuer for APIM validation, federation point for airline IdPs (B2B), service principals for CI/CD</td>
+        <td>Public OIDC / OAuth2 endpoints</td>
+      </tr>
+      <tr>
+        <td>Key Vault</td><td>Azure Key Vault</td>
+        <td>Centralised secret store. All Container Apps read via Key Vault references — no plaintext secrets in app config</td>
+        <td>Private endpoint</td>
+      </tr>
+      <tr>
+        <td>ACR</td><td>Azure Container Registry (Premium)</td>
+        <td>Signed, scanned container images for all three apps. Image pull via Managed Identity</td>
+        <td>Private endpoint</td>
+      </tr>
+      <tr>
+        <td>Application Insights / LAW</td><td>Azure Monitor</td>
+        <td>Distributed tracing, custom metrics, log aggregation, alerting</td>
+        <td>n/a</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="sec-flows">
+  <h2><span class="num">5.</span>Runtime Flows</h2>
+
+  <h3>5.1 End-to-End Operational Flow — how an airline uses prodDisruption</h3>
+  <p>The diagram below shows the full lifecycle of a single disruption — from detection in the airline's Operations Control Centre (OCC) through to passenger delivery and outcome capture in the airline's PSS / CRM. prodDisruption sits between the airline's <strong>operational data systems</strong> (disruption feed, CDP, flight inventory) and the airline's <strong>passenger channels</strong> (web, mobile, contact centre, OTA, push gateway). The platform <em>produces decisions</em>; the airline's existing systems remain the system of record for rebooking, notification dispatch and loyalty capture.</p>
+
+  <div class="mermaid" data-processed="true"><p><img src="_diagrams/diagram-02.png" alt="diagram-02" style="max-width:100%;height:auto;"/></p></div>
+
+  <h3>5.2 Data inputs and outputs per request</h3>
+  <p>Each disruption request consumes a small, strictly-defined input set and produces a strictly-shaped JSON output. The platform itself is stateless on the request path — no passenger PII is persisted; only decision metadata (no personal data) is written to the audit log.</p>
+  <table>
+    <thead><tr><th>Direction</th><th>Field / payload</th><th>Source</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td rowspan="3"><strong>Inbound — request</strong></td><td><code>pnr</code></td><td>Calling channel (Web / Mobile / IVR / OTA)</td><td>Lookup key for disruption event &amp; CDP profile</td></tr>
+      <tr><td><code>last_name</code></td><td>Calling channel</td><td>Identity verification against the PNR</td></tr>
+      <tr><td><code>tenant_id</code></td><td>APIM (extracted from JWT claim)</td><td>Routes to correct airline tenant config + agent</td></tr>
+
+      <tr><td rowspan="3"><strong>Pulled — airline operational data</strong></td><td>Disruption event</td><td>Airline Disruption API</td><td>Event type · segKey · delay / cancel context</td></tr>
+      <tr><td>CDP profile</td><td>Airline CDP</td><td>Persona signals — Student · Doctor · Defence · High&nbsp;Spender · General</td></tr>
+      <tr><td>Flight options + seat maps</td><td>Airline Flight Inventory API</td><td>Available alternates + assignable seats (recovery flow only)</td></tr>
+
+      <tr><td rowspan="2"><strong>Pulled — platform config</strong></td><td>Active agent ID + admin prompts</td><td>Cosmos DB <code>agents</code> + <code>prompts</code> (per tenant + flow)</td><td>Hot-swappable AI configuration</td></tr>
+      <tr><td>Message templates</td><td>Cosmos DB <code>templates</code></td><td>Approved base content for messaging flow</td></tr>
+
+      <tr><td rowspan="2"><strong>Outbound — recovery flow</strong></td><td><code>selected_flight</code> + <code>flight_reasoning</code></td><td>Azure AI Foundry — Recovery Agent</td><td>Flight number · time · class · segKey · why this flight</td></tr>
+      <tr><td><code>selected_seat</code> + <code>seat_reasoning</code></td><td>Azure AI Foundry — Recovery Agent</td><td>Seat number · travel class · seat type · why this seat</td></tr>
+
+      <tr><td rowspan="2"><strong>Outbound — messaging flow</strong></td><td><code>selected_group_id</code> + <code>reason</code></td><td>Azure AI Foundry — Messaging Agent</td><td>Persona-matched template group identifier</td></tr>
+      <tr><td><code>messages[SMS, WhatsApp, Email]</code></td><td>Azure AI Foundry — Messaging Agent</td><td>Personalised, channel-aware copy ready for dispatch</td></tr>
+
+      <tr><td><strong>Side-effect</strong></td><td>Audit log entry</td><td>Platform → Cosmos DB <code>audit_logs</code></td><td><code>{tenant_id, pnr_hash, decision, agent_id, tokens_in/out, latency_ms, ts}</code> — no PII</td></tr>
+    </tbody>
+  </table>
+
+  <h3>5.3 Decision contract — who owns what</h3>
+  <p>prodDisruption is a <strong>decision service</strong>, not an execution service. It returns a JSON decision; existing airline systems remain responsible for the rebooking transaction, notification dispatch and loyalty capture. This separation keeps the integration non-disruptive to the airline's PSS and audit posture.</p>
+  <table>
+    <thead><tr><th>Step</th><th>Owner</th><th>System of record</th></tr></thead>
+    <tbody>
+      <tr><td>Disruption detection</td><td>Airline OCC / NOC</td><td>Airline FOS / OCC tooling</td></tr>
+      <tr><td>Disruption event publishing</td><td>Airline IT</td><td>Airline Disruption API</td></tr>
+      <tr><td>Passenger persona</td><td>Airline marketing / data</td><td>Airline CDP</td></tr>
+      <tr><td>Flight options + seat maps</td><td>Airline IT</td><td>GDS / NDC / Airline inventory</td></tr>
+      <tr><td><strong>Decision generation (AI)</strong></td><td><strong>prodDisruption</strong></td><td><strong>Azure AI Foundry agents</strong></td></tr>
+      <tr><td>Delivery to passenger</td><td>Airline channel</td><td>Channel-owned (web / mobile / SMS gateway / agent app)</td></tr>
+      <tr><td>Rebooking commit</td><td>Airline reservations</td><td>Airline PSS (Amadeus / Sabre / Navitaire)</td></tr>
+      <tr><td>Loyalty &amp; NPS capture</td><td>Airline CRM</td><td>Airline loyalty platform</td></tr>
+      <tr><td>Decision audit trail</td><td>prodDisruption</td><td>Cosmos DB <code>audit_logs</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>5.4 Recovery flow — technical sequence (cancelled flight)</h3>
+  <div class="mermaid" data-processed="true"><p><img src="_diagrams/diagram-03.png" alt="diagram-03" style="max-width:100%;height:auto;"/></p></div>
+
+  <h3>5.5 Messaging flow — technical sequence (delayed flight)</h3>
+  <div class="mermaid" data-processed="true"><p><img src="_diagrams/diagram-04.png" alt="diagram-04" style="max-width:100%;height:auto;"/></p></div>
+</section>
+
+<section id="sec-services">
+  <h2><span class="num">6.</span>Azure Service Inventory</h2>
+  <table>
+    <thead><tr><th>Service</th><th>SKU / Tier</th><th>Rationale</th></tr></thead>
+    <tbody>
+      <tr><td>Azure API Management</td><td>Standard v2 (Stv2)</td><td>Production multi-tenant ingress, VNET integration, subscription keys, JWT validation</td></tr>
+      <tr><td>Azure Container Apps</td><td>Dedicated workload profile (D4)</td><td>Per-app autoscaling, VNET integration, predictable cost</td></tr>
+      <tr><td>Azure Static Web Apps</td><td>Standard</td><td>Custom domain, SSO with Entra ID, staging environments</td></tr>
+      <tr><td>Azure Cosmos DB for MongoDB</td><td>RU autoscale (1K–10K)</td><td>Predictable cost or true elastic; session consistency; per-tenant partition key</td></tr>
+      <tr><td>Azure Cache for Redis</td><td>Standard C1 (1 GB) — Premium P1 recommended</td><td>Idempotency, response cache, seat-map cache; Premium adds private endpoint and VNET injection</td></tr>
+      <tr><td>Azure AI Foundry</td><td>Standard project — model: GPT-4.1</td><td>Hosts persistent assistants (Recovery + Messaging); per-tenant agent IDs</td></tr>
+      <tr><td>Microsoft Entra ID</td><td>Premium P1</td><td>Admin SSO, JWT issuance for APIM, federation to airline IdPs, conditional access</td></tr>
+      <tr><td>Azure Key Vault</td><td>Standard</td><td>Secrets store; HSM tier upgrade available on enterprise contracts</td></tr>
+      <tr><td>Azure Container Registry</td><td>Premium</td><td>Geo-replication, content trust, private endpoint, Defender scanning</td></tr>
+      <tr><td>Application Insights</td><td>Workspace-based</td><td>Distributed tracing, custom metrics, KQL across all apps</td></tr>
+      <tr><td>Log Analytics Workspace</td><td>Pay-as-you-go</td><td>Central log sink + diagnostic settings for every resource</td></tr>
+      <tr><td>Microsoft Defender for Cloud</td><td>Defender for Containers, Key Vault, Cosmos DB</td><td>Posture management + runtime threat detection</td></tr>
+      <tr><td>Azure DDoS Protection</td><td>Network Protection (Standard)</td><td>Applied at the APIM public IP</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="sec-network">
+  <h2><span class="num">7.</span>Network Architecture</h2>
+  <div class="mermaid" data-processed="true"><p><img src="_diagrams/diagram-05.png" alt="diagram-05" style="max-width:100%;height:auto;"/></p></div>
+  <ul>
+    <li><strong>APIM</strong> deployed in external mode in <code>subnet-apim</code>; egress permitted only to <code>subnet-aca</code>.</li>
+    <li><strong>Container Apps Environment</strong> is VNET-integrated. <code>mcp-server</code> uses internal-only ingress and is not addressable from the internet.</li>
+    <li>All PaaS data services (Cosmos DB, Key Vault, ACR) are reached over <strong>Private Endpoints</strong>. Public network access is disabled on every account.</li>
+    <li>Egress to tenant external APIs is routed through the Container Apps NAT — a fixed outbound public IP registered with each airline tenant for IP allow-listing.</li>
+    <li><strong>NSGs</strong> on each subnet enforce least-privilege L4 rules: APIM → ACA on 443 only; ACA → private endpoints on 443 (KV, ACR, AI Foundry), 10250 / 27017 (Cosmos), 6380 (Redis TLS).</li>
+  </ul>
+</section>
+
+<section id="sec-identity">
+  <h2><span class="num">8.</span>Identity &amp; Access</h2>
+
+  <h3>8.1 Identity providers and trust flow</h3>
+  <p>Microsoft Entra ID is the identity authority for the platform. Two distinct identity flows are in use: <strong>human identities</strong> for airline admin users into the Admin Panel, and <strong>workload identities</strong> (system-assigned Managed Identity) for service-to-service authentication.</p>
+  <div class="mermaid" data-processed="true"><p><img src="_diagrams/diagram-06.png" alt="diagram-06" style="max-width:100%;height:auto;"/></p></div>
+
+  <h3>8.2 Zero-trust controls</h3>
+  <table>
+    <thead><tr><th>Principle</th><th>Implementation</th></tr></thead>
+    <tbody>
+      <tr><td>No secrets in code or env</td><td>Every secret is a Key Vault reference (<code>secretref:</code> in Container Apps). Rotated via Key Vault rotation policies.</td></tr>
+      <tr><td>Managed Identity everywhere</td><td>All inter-service calls authenticate via system-assigned MI. No SAS tokens, no connection strings.</td></tr>
+      <tr><td>RBAC, least privilege</td><td>Each MI holds the minimum role required — e.g. <code>mcp-server</code> is Cosmos Data Reader, not Contributor.</td></tr>
+      <tr><td>Human identity</td><td>Microsoft Entra ID (P1) — Conditional Access policies enforce MFA; airline tenants may federate their own IdP via B2B collaboration.</td></tr>
+      <tr><td>JWT at the edge</td><td>APIM <code>validate-jwt</code> policy verifies tokens against the Entra ID JWKS endpoint. Tenant claim drives <code>X-Tenant-Id</code> header injection.</td></tr>
+      <tr><td>Admin Panel SSO</td><td>Static Web Apps redirects unauthenticated users to Entra ID; admin roles enforced in SWA route config and in the <code>api-admin</code> backend.</td></tr>
+      <tr><td>Audit logging</td><td>Every admin write creates an audit log entry in Cosmos DB. Diagnostic settings on Key Vault and Cosmos DB stream to Log Analytics.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="sec-data">
+  <h2><span class="num">9.</span>Data Architecture</h2>
+  <h3>9.1 Cosmos DB collections (database <code>flight_operations</code>)</h3>
+  <table>
+    <thead><tr><th>Collection</th><th>Purpose</th><th>Partition key</th><th>Indexed fields</th></tr></thead>
+    <tbody>
+      <tr><td><code>tenants</code></td><td>Per-tenant base URLs and metadata</td><td><code>tenant_id</code></td><td><code>tenant_id, is_active</code></td></tr>
+      <tr><td><code>agents</code></td><td>AI Foundry agent IDs per tenant per flow</td><td><code>tenant_id</code></td><td><code>tenant_id, flow, is_active</code></td></tr>
+      <tr><td><code>prompts</code></td><td>System/user prompt overrides per tenant per flow</td><td><code>tenant_id</code></td><td><code>tenant_id, flow, is_active</code></td></tr>
+      <tr><td><code>templates</code></td><td>Message templates (delay flow)</td><td><code>tenant_id</code></td><td><code>tenant_id, is_active</code></td></tr>
+      <tr><td><code>settings</code></td><td>Generic runtime settings</td><td><code>tenant_id</code></td><td><code>tenant_id</code></td></tr>
+      <tr><td><code>audit_logs</code></td><td>Admin write audit trail</td><td><code>tenant_id</code></td><td><code>tenant_id, timestamp</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>9.2 Data classification &amp; residency</h3>
+  <table>
+    <thead><tr><th>Class</th><th>Examples</th><th>Residency</th><th>Retention</th></tr></thead>
+    <tbody>
+      <tr><td>Tenant configuration</td><td>Base URLs, agent IDs, prompts, templates</td><td>Primary Azure region (tenant-selected)</td><td>Lifetime of tenant</td></tr>
+      <tr><td>PII (transient)</td><td>PNR, last name, contact (request body only)</td><td>In-memory only, never persisted</td><td>None</td></tr>
+      <tr><td>Audit logs</td><td>Admin actions</td><td>Same region as tenant</td><td>365 days (configurable)</td></tr>
+      <tr><td>Telemetry</td><td>Request traces, AI token counts</td><td>Same region as tenant</td><td>30 days hot / 90 days archive</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Key guarantee:</strong> the platform does not persist passenger PII. All PII flows through <code>mcp-server</code> in memory and is discarded after the response is returned.</p>
+
+  <h3>9.3 Consistency &amp; backup</h3>
+  <ul>
+    <li><strong>Consistency:</strong> Session consistency (per-tenant partition reads are read-your-writes).</li>
+    <li><strong>Backup:</strong> Continuous backup with 30-day point-in-time restore.</li>
+    <li><strong>Geo-replication:</strong> Available via secondary read region with auto-failover.</li>
+  </ul>
+
+  <h3>9.4 Redis cache key schema</h3>
+  <p>Azure Cache for Redis sits on the hot path and is keyed strictly by <code>tenant_id</code> to enforce isolation. Keys, TTLs and use-cases:</p>
+  <table>
+    <thead><tr><th>Key pattern</th><th>TTL</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>idem:{tenant_id}:{pnr}</code></td><td>300 s</td><td>Idempotency — duplicate PNR requests within the window return the cached result instead of re-running the AI agent</td></tr>
+      <tr><td><code>result:{tenant_id}:{request_hash}</code></td><td>3600 s</td><td>Response cache for completed disruption decisions</td></tr>
+      <tr><td><code>seatmap:{tenant_id}:{segKey}</code></td><td>1800 s</td><td>Parsed seat map cache — avoids re-fetching the airline seat-map API for the same flight segment</td></tr>
+      <tr><td><code>agent_cfg:{tenant_id}</code></td><td>60 s</td><td>Resolved agent IDs + active prompts from Cosmos — short-TTL to allow admin hot-swap to propagate quickly</td></tr>
+      <tr><td><code>tenant_cfg:{tenant_id}</code></td><td>300 s</td><td>Tenant base URLs for external APIs — reduces Cosmos reads on the hot path</td></tr>
+      <tr><td><code>rl:{tenant_id}:{window}</code></td><td>60 s sliding</td><td>Rate-limit counter — used by APIM and as a defensive secondary check in <code>api-prod</code></td></tr>
+    </tbody>
+  </table>
+  <p><strong>Tier note:</strong> Standard C1 satisfies the cache workload at current volumes. Upgrading to Premium P1 enables private endpoint support, VNET injection and zone redundancy — recommended once contractual zero-trust requirements are signed with the first enterprise tenant.</p>
+</section>
+
+<section id="sec-ai">
+  <h2><span class="num">10.</span>AI Architecture</h2>
+  <div class="mermaid" data-processed="true"><p><img src="_diagrams/diagram-07.png" alt="diagram-07" style="max-width:100%;height:auto;"/></p></div>
+  <table>
+    <thead><tr><th>Property</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td>SDK</td><td><code>azure-ai-projects</code> + <code>azure-ai-agents</code></td></tr>
+      <tr><td>Authentication</td><td><code>DefaultAzureCredential</code> — Managed Identity in production</td></tr>
+      <tr><td>Temperature / top_p</td><td>0.1 / 0.1 (near-deterministic)</td></tr>
+      <tr><td>Thread lifecycle</td><td>Created per request, never reused</td></tr>
+      <tr><td>Timeout</td><td>120 second polling window</td></tr>
+      <tr><td>Output parsing</td><td><code>safe_json_from_agent()</code> strips markdown fences and validates JSON</td></tr>
+      <tr><td>Hot-swap</td><td>Activating a new agent ID in Cosmos DB applies on the next request — no app restart</td></tr>
+      <tr><td>Prompt layering</td><td>Base prompt → admin system prompt prepended → admin user prompt appended</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="sec-tenancy">
+  <h2><span class="num">11.</span>Multi-Tenancy Model</h2>
+  <table>
+    <thead><tr><th>Layer</th><th>Isolation mechanism</th><th>Shared infrastructure?</th></tr></thead>
+    <tbody>
+      <tr><td>APIM</td><td>JWT <code>tenant_id</code> claim → <code>X-Tenant-Id</code> header injection; per-tenant rate limit and quota</td><td>Shared gateway</td></tr>
+      <tr><td>Container Apps</td><td>Tenant context flows in headers; no in-memory tenant state</td><td>Shared compute</td></tr>
+      <tr><td>MCP server</td><td><code>tenant_id</code> resolves every external API base URL</td><td>Shared compute</td></tr>
+      <tr><td>Cosmos DB</td><td>Partition key = <code>tenant_id</code> on every collection</td><td>Shared account, isolated partitions</td></tr>
+      <tr><td>Key Vault</td><td>Per-tenant secret naming: <code>tenants/{tenant_id}/{secret}</code></td><td>Shared vault</td></tr>
+      <tr><td>AI Foundry</td><td>Distinct <code>agent_id</code> per tenant per flow; thread isolation enforced by SDK</td><td>Shared project, isolated agents</td></tr>
+      <tr><td>External APIs</td><td>Per-tenant base URLs from <code>tenants</code> collection</td><td>Fully isolated per airline</td></tr>
+    </tbody>
+  </table>
+  <h3>Tenant onboarding workflow</h3>
+  <div class="mermaid" data-processed="true"><p><img src="_diagrams/diagram-08.png" alt="diagram-08" style="max-width:100%;height:auto;"/></p></div>
+</section>
+
+<section id="sec-observability">
+  <h2><span class="num">12.</span>Observability</h2>
+  <div class="mermaid" data-processed="true"><p><img src="_diagrams/diagram-09.png" alt="diagram-09" style="max-width:100%;height:auto;"/></p></div>
+  <h3>Custom telemetry</h3>
+  <table>
+    <thead><tr><th>Metric</th><th>Dimensions</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>disruption_request_latency_ms</code></td><td><code>tenant_id, flow, outcome</code></td><td>SLO tracking</td></tr>
+      <tr><td><code>ai_agent_run_latency_ms</code></td><td><code>tenant_id, flow, agent_id</code></td><td>AI performance</td></tr>
+      <tr><td><code>ai_tokens_consumed</code></td><td><code>tenant_id, flow, direction</code></td><td>Cost attribution</td></tr>
+      <tr><td><code>mcp_external_api_latency_ms</code></td><td><code>tenant_id, api_name</code></td><td>Airline-side performance</td></tr>
+      <tr><td><code>disruption_request_total</code></td><td><code>tenant_id, flow, status</code></td><td>Throughput &amp; error rate</td></tr>
+    </tbody>
+  </table>
+  <h3>Production alert set</h3>
+  <table>
+    <thead><tr><th>Severity</th><th>Condition</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge bad">Sev 1</span></td><td><code>api-prod</code> 5xx rate &gt; 5% for 5 min</td><td>Page on-call</td></tr>
+      <tr><td><span class="badge bad">Sev 1</span></td><td>AI Foundry timeout rate &gt; 10% for 5 min</td><td>Page on-call</td></tr>
+      <tr><td><span class="badge warn">Sev 2</span></td><td>p95 e2e latency &gt; 30s for 10 min</td><td>Slack channel</td></tr>
+      <tr><td><span class="badge warn">Sev 2</span></td><td>Cosmos DB throttling (429s) &gt; 1%</td><td>Slack channel</td></tr>
+      <tr><td><span class="badge good">Sev 3</span></td><td>Key Vault auth failure &gt; 0</td><td>Email</td></tr>
+      <tr><td><span class="badge good">Sev 3</span></td><td>External tenant API error rate &gt; 1%</td><td>Email tenant ops</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="sec-devops">
+  <h2><span class="num">13.</span>DevOps &amp; Release Engineering</h2>
+  <div class="mermaid" data-processed="true"><p><img src="_diagrams/diagram-10.png" alt="diagram-10" style="max-width:100%;height:auto;"/></p></div>
+  <ul>
+    <li><strong>Blue/green via Container App revisions</strong> — new revision deployed with 0% traffic, smoke-tested, then progressively shifted.</li>
+    <li><strong>Auto-rollback</strong> — error-rate threshold of 1% on a new revision triggers automatic revert.</li>
+    <li><strong>Hot-reload of AI config</strong> — agent IDs, prompts and templates change in Cosmos DB without code deployment.</li>
+    <li><strong>Secret rotation</strong> — Key Vault policies rotate Cosmos DB keys (90 days) and tenant API keys. Container Apps reload Key Vault references on rotation.</li>
+  </ul>
+</section>
+
+<section id="sec-reliability">
+  <h2><span class="num">14.</span>Reliability &amp; Disaster Recovery</h2>
+  <p>The platform is deployed in a single Azure region (<strong>South India</strong>) with zone redundancy across all stateful services. Availability is achieved through Availability Zone distribution and Container Apps revision-level redundancy; durability is achieved through Cosmos DB continuous backup and ACR geo-replicated images.</p>
+  <table>
+    <thead><tr><th>Aspect</th><th>Configuration</th></tr></thead>
+    <tbody>
+      <tr><td>Region</td><td>South India — primary and only deployed region</td></tr>
+      <tr><td>Availability Zones</td><td>Container Apps Environment, Cosmos DB, APIM and Redis are deployed across the AZs available in South India</td></tr>
+      <tr><td>HA within region</td><td>Container Apps revisions, min replicas ≥ 2 on every app, zone-redundant SKUs</td></tr>
+      <tr><td>Cosmos DB</td><td>Zone-redundant; continuous backup (30-day point-in-time restore)</td></tr>
+      <tr><td>APIM</td><td>Zone-redundant deployment</td></tr>
+      <tr><td>ACR</td><td>Premium with geo-replication — images are pre-staged in a paired region for fast cold-start during DR</td></tr>
+      <tr><td>Key Vault</td><td>Soft delete + purge protection enabled (90 days)</td></tr>
+      <tr><td>Redis</td><td>Standard C1 (in-region HA via primary/replica) — Premium upgrade adds zone redundancy and geo-replication</td></tr>
+      <tr><td>RTO target (in-region failure)</td><td>≤ 5 minutes — AZ failover is automatic across managed services</td></tr>
+      <tr><td>RTO target (regional failure)</td><td>≤ 4 hours — manual restore from Cosmos PITR + ACR replica + redeploy of Container Apps via IaC</td></tr>
+      <tr><td>RPO target</td><td>≤ 5 minutes (Cosmos continuous backup)</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Disaster recovery plan:</strong> Infrastructure is described as Bicep/Terraform; the platform can be re-provisioned in a paired Azure region from source control and Cosmos PITR in under 4 hours. A documented DR runbook covers failover steps, DNS update, tenant communication and data validation.</p>
+</section>
+
+<section id="sec-performance">
+  <h2><span class="num">15.</span>Performance &amp; Scaling</h2>
+  <table>
+    <thead><tr><th>Layer</th><th>Scaling rule</th><th>Min / Max</th></tr></thead>
+    <tbody>
+      <tr><td>APIM</td><td>Fixed capacity units (Stv2)</td><td>1 → 4 units</td></tr>
+      <tr><td><code>api-prod</code></td><td>HTTP concurrency (~50 / replica)</td><td>2 → 20 replicas</td></tr>
+      <tr><td><code>api-admin</code></td><td>HTTP concurrency</td><td>1 → 5 replicas</td></tr>
+      <tr><td><code>mcp-server</code></td><td>CPU + HTTP concurrency</td><td>2 → 10 replicas</td></tr>
+      <tr><td>Cosmos DB (RU mode)</td><td>Autoscale 1K → 10K RU/s per collection</td><td>n/a</td></tr>
+      <tr><td>AI Foundry</td><td>Quota-bounded; per-region TPM / RPM monitored</td><td>Negotiated quota</td></tr>
+    </tbody>
+  </table>
+  <h3>Hot-path latency budget (recovery, p95)</h3>
+  <table>
+    <thead><tr><th>Stage</th><th>Budget</th></tr></thead>
+    <tbody>
+      <tr><td>APIM</td><td>&lt; 50 ms</td></tr>
+      <tr><td>MCP fan-out (parallel)</td><td>&lt; 4 s (dominated by airline APIs)</td></tr>
+      <tr><td>AI Foundry recovery run</td><td>&lt; 15 s</td></tr>
+      <tr><td>Total end-to-end</td><td>&lt; 20 s p95</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="sec-security">
+  <h2><span class="num">16.</span>Security Controls</h2>
+  <table>
+    <thead><tr><th>Control family</th><th>Implementation</th></tr></thead>
+    <tbody>
+      <tr><td>Network</td><td>VNET-integrated ACA, private endpoints for Cosmos / Key Vault / ACR; APIM is the only public ingress for the API; SWA is the only public ingress for the Admin UI</td></tr>
+      <tr><td>Identity</td><td>System-assigned Managed Identity per Container App; RBAC at minimum role; no SAS or connection strings</td></tr>
+      <tr><td>Secrets</td><td>Key Vault references only; soft delete + purge protection; rotation policies</td></tr>
+      <tr><td>Edge</td><td>APIM JWT validation, subscription keys, per-tenant rate limit and quota, schema validation, DDoS Network Protection on the public IP</td></tr>
+      <tr><td>Data in transit</td><td>TLS 1.2+ enforced; mTLS optional on internal ingress</td></tr>
+      <tr><td>Data at rest</td><td>AES-256 with Microsoft-managed keys; CMK upgrade path available</td></tr>
+      <tr><td>PII</td><td>No passenger PII persisted; in-memory only inside <code>mcp-server</code></td></tr>
+      <tr><td>Threat detection</td><td>Microsoft Defender for Containers, Cosmos DB, Key Vault, CSPM</td></tr>
+      <tr><td>Vulnerability management</td><td>ACR + Defender for Containers; CI gate blocks HIGH / CRITICAL CVEs</td></tr>
+      <tr><td>Supply chain</td><td>Multi-stage builds, distroless base image, non-root runtime, signed images</td></tr>
+      <tr><td>Compliance posture</td><td>Aligned to ISO 27001 / SOC 2 controls inherited from Azure; per-tenant audit logs retained 365 days</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="sec-waf">
+  <h2><span class="num">17.</span>Well-Architected Framework Alignment</h2>
+  <div class="pillars">
+    <div class="pillar"><strong>Reliability</strong><span>Zone-redundant SKUs · ACA min replicas ≥ 2 · Cosmos PITR · blue/green revisions · regional failover</span></div>
+    <div class="pillar"><strong>Security</strong><span>Managed Identity everywhere · Key Vault references · private endpoints · JWT at the edge · Defender for Cloud</span></div>
+    <div class="pillar"><strong>Cost Optimisation</strong><span>Autoscale on every Container App · Cosmos autoscale RU · per-tenant cost attribution tags · LAW sampling</span></div>
+    <div class="pillar"><strong>Operational Excellence</strong><span>CI/CD with security gates · blue/green · custom telemetry · production alert set · audit logging</span></div>
+    <div class="pillar"><strong>Performance Efficiency</strong><span>Async parallel fan-out in MCP · deterministic AI agents · parallel seat-map retrieval · concurrency-based autoscale</span></div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <strong>prodDisruption — Production Architecture on Microsoft Azure</strong><br>
+  Document version 1.0 · AIONOS Platform Engineering · Contact: rishabh.raizada@aionos.ai
+</footer>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      fontFamily: 'Segoe UI, sans-serif',
+      primaryColor: '#0078d4',
+      primaryTextColor: '#ffffff',
+      primaryBorderColor: '#005a9e',
+      lineColor: '#4a5460',
+      secondaryColor: '#eef5fc',
+      tertiaryColor: '#f7f9fc'
+    },
+    flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' },
+    sequence: { useMaxWidth: true, showSequenceNumbers: false }
+  });
+</script>
+
+
+<div class="mermaidTooltip" style="opacity: 0;"></div></body></html>

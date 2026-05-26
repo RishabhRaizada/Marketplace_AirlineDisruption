@@ -317,3 +317,20 @@ def fetch_messaging_prompt():
         return ""
 
     return doc.get("user_prompt", "")
+
+
+# ---------------------------------------------------------------------------
+# Tenant Config
+# ---------------------------------------------------------------------------
+
+def fetch_tenant_config(tenant_id: str) -> dict | None:
+    """Fetch tenant API config from the 'tenants' collection by tenant_id."""
+    try:
+        return _find_one(
+            "tenants",
+            {"tenant_id": tenant_id},
+            {"_id": 0}
+        )
+    except Exception as e:
+        print(f"[cosmos_data_fetcher] fetch_tenant_config failed: {e}")
+        return None

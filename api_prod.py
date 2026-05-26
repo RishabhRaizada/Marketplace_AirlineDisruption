@@ -12,7 +12,6 @@ from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential, AzureCliCredential
 from azure.ai.agents.models import ListSortOrder, RunStatus
 
-
 PROJECT_ENDPOINT = "https://marketplace-aifoundry.services.ai.azure.com/api/projects/proj-default"
 
 MCP_URL = "http://localhost:8004/mcp"
@@ -20,9 +19,6 @@ MCP_URL = "http://localhost:8004/mcp"
 app = FastAPI(title="Flight Disruption API")
 
 
-# =================================================
-# REQUEST MODELS
-# =================================================
 
 class DisruptionRequest(BaseModel):
     pnr: str
